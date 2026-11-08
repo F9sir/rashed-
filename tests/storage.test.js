@@ -1,0 +1,12 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+const dir=mkdtempSync(join(tmpdir(),'maida-test-'));
+process.env.MAIDA_DATA_DIR=dir;
+const {createBill,getBill,updateBill,createShare,revokeShare,joinBill}=await import('../lib/data/sqlite-store.js');
+const bill={name:'Lunch',date:'2026-11-08',people:[{id:'a',name:'A'},{id:'b',name:'B'}],payer:'a',mode:'equal',total:'1.000',items:[],adjustments:{tax:'',service:'',tip:'',discount:''}};
+test('owner and shared links enforce permissions and protect concurrent changes',()=>{const {id,owner,version}=createBill(bill);assert.equal(getBill(id,'wrong'),null);assert.equal(getBill(id,owner).result.total,1000);const {share}=createShare(id,owner);assert.equal(getBill(id,share).role,'viewer');assert.equal(updateBill(id,share,bill,version),null);assert.equal(joinBill(id,share,'C').bill.people.length,3);assert.equal(updateBill(id,owner,bill,version),false);assert.equal(revokeShare(id,owner),true);assert.equal(getBill(id,share),null);assert.equal(joinBill(id,share,'D'),null)});
+test('rejects invalid bills server side',()=>{assert.throws(()=>createBill({...bill,total:'-10'}));assert.throws(()=>createBill({...bill,mode:'garbage'}))});
+process.on('exit',()=>rmSync(dir,{recursive:true,force:true}));
